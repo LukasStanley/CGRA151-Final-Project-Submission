@@ -1,0 +1,595 @@
+class player {
+
+  float playerX;
+  float playerY;
+  float playerXVelocity = 0;
+  float playerYVelocity = 0;
+  float playerXAcceleration = 0.05; //for walking
+  float playerXMaxSpeed = 1.2;
+  float playerXDeAcceleration = 0.4;
+  float playerYAcceleration = 0.7; //For jumping
+  float playerGravity = 0.2;
+  int maxIncline = 2; //Max rise/run of slope dino can scale
+
+  boolean jumpBeenPressed = false;
+  boolean isTouchingGround = false;
+  boolean inputAllowed;
+  boolean movingLeft = false;
+  boolean movingRight = false;
+  boolean isGroundBelow = false;
+
+
+  //win/loss scenario related values
+  boolean hasDied = false;
+  boolean hasWon = false;
+  int[] winningTiles;
+
+  boolean testFlag = true;
+  boolean testFlag1 = true;
+
+  //counter related variables (how long button has been held for)
+  int jumpMaxPower = 15;
+  int jumpCurrentPower = 0;
+  int walkMaxPower = 15;
+  int walkCurrentPower = 0;
+
+  int effectiveWidthPixels;
+  int effectiveHeightPixels;
+  int maxLevelDistance;
+  int playerCenterOffset;
+  int highestValidY;
+  int facingDirection = 0; //0 = left, 1 = right
+  float pixelYScale;
+  float pixelXScale;
+
+  //Tileset of dino
+  int[][] dinoRGB = { {0, 0, 0}, {255, 255, 255}, {237, 27, 36} }; //Black, White, Red
+
+  //Collision and size related variables
+  int dinoCollisionArrays[][][]; //Array of "tiles" close to dino to keep track of which "tiles" to collide with
+  int dinoWidth = 11;
+  int dinoHeight = 17;
+
+  //visual offsets to allow visuals of dino to be larger than dino itself
+  int dinoVisualWidth = 23;
+  int dinoVisualHeight = 17;
+  int dinoWidthVisualOffset = int((dinoVisualWidth-dinoWidth)/2);
+  int dinoHeightVisualOffset = dinoVisualHeight-dinoHeight;
+  int numberOfAnimationFrames = 6;
+  int currentAnimationFrame = 0;
+  float animationTimer = 0;
+  float animationTime = 0.2;
+
+
+  player(int effectiveHeightPixelsGiven, int effectiveWidthPixelsGiven, float screenDenominator, int startY, int givenLevelWidth, int[] winningTilesPassed) {
+
+    //Setpup of player = convinience/location/other variable setup based on passed information
+
+    //size of a screen
+    effectiveWidthPixels= effectiveWidthPixelsGiven;
+    effectiveHeightPixels=effectiveHeightPixelsGiven;
+
+    //level overall size
+    maxLevelDistance = givenLevelWidth;
+
+    //starting y position
+    playerY = startY;
+
+    //Pixel Scaling
+    pixelYScale = (displayHeight/effectiveHeightPixels)/screenDenominator;
+    pixelXScale = (displayWidth/effectiveWidthPixels)/screenDenominator;
+
+    //Starting X location
+    playerX = effectiveWidthPixels/2;
+
+    //Tiles that signify the player having won if above them
+    winningTiles = winningTilesPassed;
+
+    //Center constant (player x is varies)
+    playerCenterOffset = effectiveWidthPixels/2;
+
+    inputAllowed = true;
+  }
+
+  void giveLocalArea(int[][][] passedAreas) {
+
+    dinoCollisionArrays = passedAreas;
+  }
+
+  void updatePlayer() {
+
+    isGroundBelow();
+    updateGravity();
+    updateDeathState();
+    updateJump();
+    updateWalk();
+    updateXpos();
+    updateYpos();
+  }
+
+  boolean hasWon() {
+
+    return hasWon;
+  }
+
+  boolean hasLost() {
+
+    return hasDied;
+  }
+
+  void updateDeathState() {
+
+    if (hasDied) {
+
+      inputAllowed=false;
+    }
+  }
+
+  /** 
+   * Update the player's Y position based on their current y velocity - checks if this moves player out of stage, and prevents it if true
+   */
+  void updateXpos() {
+
+    if (playerX+playerXVelocity<0) {
+
+      playerX=0;
+      currentAnimationFrame = 0;
+      animationTimer = 0;
+    } else if (playerX+playerXVelocity>maxLevelDistance-dinoWidth) {
+
+      playerX=maxLevelDistance-dinoWidth;
+      currentAnimationFrame = 0;
+      animationTimer = 0;
+      hasWon = true;
+    } else {
+
+      playerX+=playerXVelocity;
+    }
+
+    if (playerXVelocity==0) {  
+      animationTimer = 0;
+      currentAnimationFrame = 0;
+    } else {
+      
+      float playerSpeedNoDir = playerXVelocity;
+      if(playerSpeedNoDir<0){playerSpeedNoDir=-playerSpeedNoDir;}
+      animationTimer+=(playerSpeedNoDir/playerXMaxSpeed)*animationTime;
+      if (int(animationTimer)>numberOfAnimationFrames-1) {
+
+        animationTimer=0;
+      }
+    }
+  }
+
+  /** 
+   * Update the player's Y position based on their current y velocity - checks if this moves player below stage, and results in a death if true
+   */
+  void updateYpos() {
+
+    playerY+=playerYVelocity;
+    if (playerY>effectiveHeightPixels) {
+
+      hasDied=true;
+    }
+  }
+
+  /** 
+   * Update the player's Y velocity based on gravity
+   */
+  void updateGravity() {
+
+    isTouchingGround();
+    if (isTouchingGround==true) { 
+      playerYVelocity=0;
+      jumpCurrentPower = 0;
+    }
+    if (isTouchingGround==false) {
+
+      playerYVelocity += playerGravity;
+      if (playerY+playerYVelocity+dinoHeight > highestValidY && isGroundBelow) {
+        //print(highestValidY);
+
+        playerY=highestValidY-dinoHeight;
+        playerYVelocity = 0;
+        isTouchingGround=true;
+      }
+    }
+  }
+
+  /** 
+   * Update the player's Y velocity based on their current jump inputs and jumping power
+   */
+  void updateJump() {
+
+    if ((jumpBeenPressed)&&(isTouchingGround)&&(inputAllowed)) {
+
+      if (jumpCurrentPower==0) {
+        jumpCurrentPower = jumpMaxPower;
+      }
+    }
+
+    playerYVelocity-=jumpCurrentPower*(playerYAcceleration/jumpMaxPower);
+
+    if (jumpBeenPressed&&jumpCurrentPower>0) {
+
+      jumpCurrentPower--;
+    } else {
+      jumpCurrentPower=0;
+    }
+  }
+
+  /** 
+   * Update the player's X velocity based on their current walking inputs and walking power
+   */
+  void updateWalk() {
+
+    if ((movingLeft||movingRight)&&inputAllowed) {
+
+      if (walkCurrentPower<walkMaxPower) {
+        walkCurrentPower++;
+        //println(walkCurrentPower);
+      }
+    }
+
+    if (movingLeft&&playerXVelocity>-playerXMaxSpeed) {
+      playerXVelocity+=-walkCurrentPower*(playerXAcceleration/walkMaxPower);
+    } else if (movingRight&&playerXVelocity<playerXMaxSpeed) {
+      playerXVelocity+=walkCurrentPower*(playerXAcceleration/walkMaxPower);
+    }
+
+
+    if (movingLeft==false&&movingRight==false&&walkCurrentPower>0) {
+
+      walkCurrentPower-=3;
+
+      if (walkCurrentPower<0) {
+        walkCurrentPower=0;
+      }
+
+      //isTouchingGround();
+      //if (isTouchingGround) {
+      if (playerXVelocity<0) {
+        playerXVelocity+=playerXDeAcceleration;
+        if (playerXVelocity>0) {
+          playerXVelocity=0;
+        }
+      } else if (playerXVelocity>0) {
+        playerXVelocity-=playerXDeAcceleration;
+        if (playerXVelocity<0) {
+          playerXVelocity=0;
+        }
+      }
+      //}
+    } 
+
+    if (playerXVelocity<0) {
+
+      double distanceToLeft=findValidDistance(1);
+
+      if (-playerXVelocity>distanceToLeft) {
+
+        playerX-=distanceToLeft;
+        playerXVelocity=0;
+        //println("corrected");
+      }
+    } else if (playerXVelocity>0) {
+
+      double distanceToRight=findValidDistance(2);
+
+      if (playerXVelocity>distanceToRight) {
+
+        playerX+=distanceToRight;
+        playerXVelocity=0;
+        //println("correctedRight");
+      }
+    }
+  }
+
+  /** 
+   * See if the player has any ground tiles directly below them to determine if a jump input should result in a jump, among other things
+   */
+  void isTouchingGround() {
+
+    int currentlyEvaluatingTile;
+    int maxY = int(playerY);
+    if (maxY<0) {
+      maxY=0;
+    } else if (maxY>effectiveHeightPixels) {
+      maxY=effectiveHeightPixels-1;
+    }
+
+    for ( int widthIndex=0; widthIndex < dinoWidth; widthIndex++ ) {
+
+      currentlyEvaluatingTile = dinoCollisionArrays[0][widthIndex][maxY];
+
+      if (currentlyEvaluatingTile>=0) {
+
+        isTouchingGround=true;
+        return;
+      }
+    }
+    isTouchingGround=false;
+    return;
+  }
+
+  /** 
+   * See if the player has any ground tiles below them at all,
+   * to determine if y position should be changed by a lesser amount to avoid clipping into the ground,
+   * As well as see if the player is above the win condition tiles.
+   */
+  void isGroundBelow() {
+
+    int currentlyEvaluatingTile;
+    int maxY = int(playerY);
+    if (maxY<0) {
+
+      maxY=0;
+    } 
+
+    highestValidY = dinoCollisionArrays[0][dinoWidth-1].length;
+    boolean highestValidFound = false;
+
+    for ( int widthIndex=0; widthIndex < dinoWidth; widthIndex++ ) {
+
+      for ( int heightIndex=maxY; heightIndex < effectiveHeightPixels; heightIndex++ ) {
+
+        currentlyEvaluatingTile = dinoCollisionArrays[0][widthIndex][heightIndex];
+
+        if ((currentlyEvaluatingTile>=0)&&(heightIndex<highestValidY)) {
+
+          highestValidFound = true;
+          highestValidY = heightIndex;
+          for ( int winConIndex=0; winConIndex < winningTiles.length; winConIndex++ ) {
+            if (currentlyEvaluatingTile==winningTiles[winConIndex]) {
+
+              hasWon = true;
+              inputAllowed = false;
+            }
+          }
+        }
+      }
+
+      if (highestValidFound) {
+
+        isGroundBelow = true;
+      } else {
+
+        isGroundBelow = false;
+      }
+    }
+  }
+
+  /** 
+   * Find the maximum number of tiles the dinosaur can travel before the incline is too steep - uses stepheight and the area directly ahead or behind of player.
+   */
+  int findValidDistance(int direction) {
+
+    int maxDistanceWithAppropriateIncline = 0;
+    int currentlyEvaluatingTile;
+    int currentStepPoints = maxIncline;
+    int highestPoints[] = findHighestPoints(direction);
+    int currentHeight = int(playerY+dinoHeight);
+    double currentIncline;
+
+    if (direction==2) {
+      for ( int highPointIndex=0; highPointIndex < highestPoints.length; highPointIndex++ ) {
+
+        if (highestPoints[highPointIndex]==-1) {
+          //println("should not print");
+          currentStepPoints = 0;
+          maxDistanceWithAppropriateIncline++;
+        } else {
+
+          if (currentHeight-currentStepPoints<=highestPoints[highPointIndex]) {
+            //println("leftwith with"+highPointIndex+" and "+currentHeight);
+            currentHeight = highestPoints[highPointIndex];
+            maxDistanceWithAppropriateIncline++;
+            currentStepPoints = int(maxIncline);
+          } else {
+            if (testFlag1) {
+              //println("was not "+currentHeight+currentStepPoints+" bigger than: "+highestPoints[highPointIndex]+" :]");
+            }
+            return maxDistanceWithAppropriateIncline;
+          }
+        }
+      }
+    } else if (direction==1) {
+
+      for ( int highPointIndex=highestPoints.length-1; highPointIndex > -1; highPointIndex-- ) {
+
+        if (highestPoints[highPointIndex]==-1) {
+          // println("should not print");
+          currentStepPoints = 0;
+          maxDistanceWithAppropriateIncline++;
+        } else {
+
+          if (currentHeight-currentStepPoints<=highestPoints[highPointIndex]) {
+            currentHeight = highestPoints[highPointIndex];
+            //println("was "+currentHeight+currentStepPoints+" bigger than: "+highestPoints[highPointIndex]+" :]");
+            //println("right with"+highPointIndex+" and "+currentHeight);
+            maxDistanceWithAppropriateIncline++;
+            currentStepPoints = int(maxIncline);
+          } else {
+            //println("was not "+currentHeight+currentStepPoints+" bigger than: "+highestPoints[highPointIndex]+" :]");
+            return maxDistanceWithAppropriateIncline;
+          }
+        }
+      }
+    }
+    testFlag1=false;
+    return maxDistanceWithAppropriateIncline;
+  }
+
+  /** 
+   * Find and return the highest points of the area ajacent to the player - to help in checking slope steepness
+   */
+  int[] findHighestPoints(int direction) {
+
+    int highestPoints[] = new int[dinoCollisionArrays[direction].length];
+    int currentlyEvaluatingTile;
+
+    for ( int widthIndex=0; widthIndex < dinoCollisionArrays[direction].length; widthIndex++ ) {
+
+      highestPoints[widthIndex]=-1;
+
+      for ( int heightIndex=0; heightIndex < effectiveHeightPixels; heightIndex++ ) {
+
+        currentlyEvaluatingTile = dinoCollisionArrays[direction][widthIndex][heightIndex];
+
+        if (currentlyEvaluatingTile>=0) {
+
+          if (highestPoints[widthIndex]==-1) {
+
+            highestPoints[widthIndex]=heightIndex;
+          } else if (heightIndex<highestPoints[widthIndex]) {
+
+            highestPoints[widthIndex]=heightIndex;
+          }
+        }
+      }
+    }
+
+    return highestPoints;
+  }
+
+  /** 
+   * Returns X pos of player
+   */
+  int getX() { 
+    return int(playerX);
+  }
+
+  /** 
+   * Returns height of player
+   */
+  int getY() { 
+    return int(playerY);
+  }
+
+  int getDinoWidth() { 
+    return dinoWidth;
+  }
+
+  /** 
+   * Returns width of player
+   */
+  int getDinoHeight() { 
+    return dinoHeight;
+  }
+
+  /** 
+   * updates what direction the player is currently trying to move in based on keypress events
+   */
+  void moveLRInput(int direction, boolean holdOrRelease) {
+
+    if (holdOrRelease==true) {
+
+      if (direction==0 && movingLeft==false && movingRight==false) {
+
+        movingLeft = true;
+      } else if (direction==1 && movingRight==false && movingLeft==false) {
+
+        movingRight = true;
+      }
+    } else if (holdOrRelease==false) {
+
+      if (direction==0 && movingLeft==true) {
+
+        movingLeft = false;
+      } else if (direction==1 && movingRight==true) {
+
+        movingRight = false;
+      }
+    }
+  }
+
+  /** 
+   * receives jump input and updates state of player inputs accordingly
+   */
+  void jumpInput(boolean holdOrRelease) {
+    if (holdOrRelease==true&&jumpBeenPressed==false) {
+
+      jumpBeenPressed=true;
+    } else if (holdOrRelease==false&&jumpBeenPressed==true) {
+
+      jumpBeenPressed=false;
+    }
+  }
+
+
+  /** 
+   * Loads and draws player dinosaur images
+   */
+  void drawPlayer() {
+
+    currentAnimationFrame = int(animationTimer);
+    String[] lines = loadStrings("images/DinoImages/dino"+currentAnimationFrame+".csv");
+
+    int plannedPixel;
+    int lastScreenCenterOffset = effectiveWidthPixels+int(playerX-dinoWidthVisualOffset)-maxLevelDistance;
+
+    if (playerX<playerCenterOffset) {
+      translate(int(playerX-dinoWidthVisualOffset)*pixelXScale, int(playerY)*pixelYScale);
+    } else if (playerX>maxLevelDistance-playerCenterOffset) {
+      translate(int(lastScreenCenterOffset)*pixelXScale, int(playerY)*pixelYScale);
+    } else {
+      translate((playerCenterOffset-dinoWidthVisualOffset)*pixelXScale, int(playerY)*pixelYScale);
+    }
+    for ( int heightIndex=0; heightIndex < dinoVisualHeight; heightIndex++ ) {
+
+      Scanner scan = new Scanner(lines[heightIndex]);
+      scan.useDelimiter(",");
+      if(movingRight){ facingDirection=1;}
+      else if(movingLeft){ facingDirection=0;}
+      if (facingDirection==1) { //Draw the player facing right 
+        for ( int widthIndex=0; widthIndex < dinoVisualWidth; widthIndex++ ) {
+
+          if (scan.hasNextInt()) {
+
+            plannedPixel = scan.nextInt();
+            if (plannedPixel>=0) {
+
+              drawPixel(widthIndex, heightIndex, dinoRGB[plannedPixel][0], dinoRGB[plannedPixel][1], dinoRGB[plannedPixel][2]);
+            }
+          } else { 
+
+            println("File reading failed - missing pixel on index height = "+heightIndex+" width = "+widthIndex);
+          }
+        }
+      } else if(facingDirection==0){   //Draw the player facing left  
+        for ( int widthIndex=0; widthIndex < dinoVisualWidth; widthIndex++ ) {
+
+          if (scan.hasNextInt()) {
+
+            plannedPixel = scan.nextInt();
+            if (plannedPixel>=0) {
+
+              drawPixel(dinoVisualWidth-widthIndex, heightIndex, dinoRGB[plannedPixel][0], dinoRGB[plannedPixel][1], dinoRGB[plannedPixel][2]);
+            }
+          } else { 
+
+            println("File reading failed - missing pixel on index height = "+heightIndex+" width = "+widthIndex);
+          }
+        }
+      }
+      scan.close();
+    }
+    if (playerX<playerCenterOffset) {
+      translate(-int(playerX-dinoWidthVisualOffset)*pixelXScale, -int(playerY)*pixelYScale);
+    } else if (playerX>maxLevelDistance-playerCenterOffset) {
+      translate(-int(lastScreenCenterOffset)*pixelXScale, -int(playerY)*pixelYScale);
+    } else {
+      translate(-(playerCenterOffset-dinoWidthVisualOffset)*pixelXScale, -int(playerY)*pixelYScale);
+    }
+  }
+
+
+  /** 
+   * Helper method to draw pixels using accurate scaling
+   */
+  void drawPixel(int xLoc, int yLoc, float red, float green, float blue) {
+
+    fill(red, green, blue);
+    rect(xLoc*pixelXScale, yLoc*pixelYScale, pixelXScale, pixelYScale);
+  }
+}
