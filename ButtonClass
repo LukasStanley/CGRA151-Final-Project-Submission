@@ -1,0 +1,53 @@
+
+// All self explanatory, and all self written in order to have pixel scaling function (despite how generic code is)
+class button {
+  
+  float startX;
+  float startY;
+  int nonScaledX;
+  int nonScaledY;
+  float buttonWidth;
+  float buttonHeight;
+  
+  button(int startXPassed, int startYPassed, int buttonWidthPassed, int buttonHeightPassed, float pixelXScale, float pixelYScale){
+  
+    startX=startXPassed*pixelXScale;
+    startY=startYPassed*pixelYScale;
+    nonScaledX=startXPassed;
+    nonScaledY=startYPassed;
+    buttonWidth=buttonWidthPassed*pixelXScale;
+    buttonHeight=buttonHeightPassed*pixelYScale;
+  
+  }
+  
+  boolean wasPressed(float mouseXLoc, float mouseYLoc){
+  
+    boolean isPressed = false;
+
+    if(mouseXLoc<=startX+buttonWidth&&mouseXLoc>=startX){
+      
+      if(mouseYLoc<=startY+buttonHeight&&mouseYLoc>=startY){
+      
+        isPressed=true;
+      
+      }
+      
+    }
+    
+    return isPressed;
+  
+  }
+  
+  int getNonScaledX(){
+    
+    return nonScaledX;
+    
+  }
+  
+  int getNonScaledY(){
+    
+    return nonScaledY;
+    
+  }
+  
+}
