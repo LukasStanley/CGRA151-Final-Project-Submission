@@ -1,0 +1,398 @@
+import java.util.Scanner;
+
+class level {
+
+  int numberOfScreens = 1;
+  int numberOfScreenTypes = 1;
+  int levelWidth;
+  int tileArray[][][];  //Screen Index, Screen width, screen height (collection of "screens")
+  int screenSelectionPool[];
+  int backGroundArray[][];  //width, height (single "screen" for background)
+  int levelNumber;
+  int effectiveWidthPixels;
+  int effectiveHeightPixels;
+  int playerStartPixel;
+
+  int[] screenOrder = new int[numberOfScreens];
+  int[] winningTiles;
+  int[][] tileRGB; //RGB of tiles - loaded from level's file
+  int[][] backGroundRGB = { {157, 217, 234}, {255, 255, 255} }; //Not loaded from the level's file 
+  int[][][] dinoCollisionArrays;
+  String levelName;
+  float pixelXScale;
+  float pixelYScale;
+  player levelPlayer;
+
+  /** 
+   * Initialise the level
+   */
+  level(int levelIndex, int effectiveHPixels, int effectiveWPixels, float screenDenominator) {
+
+    readLevelSettings("levels/level"+levelIndex+"/levelInfo.txt");
+    effectiveWidthPixels = effectiveWPixels;
+    effectiveHeightPixels = effectiveHPixels;
+    levelWidth = numberOfScreens*effectiveWidthPixels;
+    tileArray = new int[numberOfScreens][][];
+    screenSelectionPool = new int[numberOfScreenTypes]; //The first Two screens are dedicated start and end screens - to ensure the player is spawned above ground, and the player cannot end the level early
+    dinoCollisionArrays = new int[3][][];
+    levelNumber = levelIndex;
+    pixelYScale = (displayHeight/effectiveHeightPixels)/screenDenominator;
+    pixelXScale = (displayWidth/effectiveWidthPixels)/screenDenominator;
+    levelPlayer = new player(effectiveHeightPixels, effectiveWidthPixels, screenDenominator, playerStartPixel, levelWidth, winningTiles);
+  }
+
+  /** 
+   * Load all the screen files to be used in the level into an array of screens for efficient access
+   */
+  void loadLevel() {
+
+    String filePath;
+
+    filePath = "images/Backgrounds/"+levelNumber+".csv";
+    backGroundArray = readScreenIntoArray(filePath);
+
+    for ( int i=0; i < numberOfScreenTypes; i++ ) {
+
+      screenSelectionPool[i]=i+2;
+    }
+
+    randomizeArrayOrder(screenSelectionPool);
+    filePath = "levels/level"+levelNumber+"/"+0+".csv";
+    tileArray[0] = readScreenIntoArray(filePath);
+    filePath = "levels/level"+levelNumber+"/"+1+".csv";
+    tileArray[tileArray.length-1] = readScreenIntoArray(filePath);
+    if (numberOfScreenTypes>=1) {
+      for ( int i=1; i < numberOfScreens-1; i++ ) {
+        println("added screen "+screenSelectionPool[i]);
+        filePath = "levels/level"+levelNumber+"/"+screenSelectionPool[i]+".csv";
+        tileArray[i] = readScreenIntoArray(filePath);
+      }
+    }
+  }
+
+  void randomizeArrayOrder(int[]arrayToRandomize) {
+
+    int temp;
+    int randomPick;
+
+    for (int i=0; i<arrayToRandomize.length; i++) {
+
+      randomPick  = (int)random(arrayToRandomize.length); 
+      temp = arrayToRandomize[i]; 
+      arrayToRandomize[i] = arrayToRandomize[randomPick]; 
+      arrayToRandomize[randomPick]= temp;
+    }
+  }
+
+  /** 
+   * Draws the level
+   */
+  void drawLevel() {
+    //Update the arrays used for collision with dinosaur according to new position of player
+    dinoCollisionArrays[0] = calculateLocalTiles(levelPlayer.getX(), levelPlayer.getDinoWidth());
+    dinoCollisionArrays[1] = calculateLocalTiles(levelPlayer.getX()-levelPlayer.getDinoWidth(), levelPlayer.getDinoWidth());
+    dinoCollisionArrays[2] = calculateLocalTiles(levelPlayer.getX()+levelPlayer.getDinoWidth(), levelPlayer.getDinoWidth());
+
+    //Pass the updated arrays to the player object, then update the player's state before drawing everything
+    levelPlayer.giveLocalArea(dinoCollisionArrays);
+    levelPlayer.updatePlayer();
+    drawBackGround();
+    drawTiles();
+
+    //drawTEST_AREA();  // call for test function
+
+    levelPlayer.drawPlayer();
+  }
+
+  int getCurrentLevel() {
+
+    return levelNumber;
+  }
+
+  boolean updateHasWon() {
+
+    return levelPlayer.hasWon();
+  }
+
+  boolean updateHasLost() {
+
+    return levelPlayer.hasLost();
+  }
+
+  /** 
+   * Passes any keyboard inputs on to the level's player (acts as a middleman to the player object from the main loop)
+   */
+  void keyBeenPressed(String action, boolean actionType) {
+
+    if (action=="jump") {
+      levelPlayer.jumpInput(actionType);
+    } else if (action=="left") {
+
+      levelPlayer.moveLRInput(0, actionType);
+    } else if (action=="right") {
+
+      levelPlayer.moveLRInput(1, actionType);
+    }
+  }
+
+
+  /** 
+   * Calculates the local array of tiles to calculate both the area visible on screen to reduce the amount drawn, 
+   * and return the areas ajacent to the player for collision checking. Max width = 1 screen.
+   */
+  int[][] calculateLocalTiles(int startX, int areaWidth) {
+
+    if (areaWidth>effectiveWidthPixels) {
+      println("Area too large to print!"); 
+      return new int[0][0];
+    }
+
+    int correctedStartX = startX;
+    if (startX<0) {
+
+      correctedStartX = 0;
+    }
+
+    int returnArray[][] = new int[areaWidth][effectiveHeightPixels];
+    int currentArrayXIndex = 0;
+    int screenIndexNumber = correctedStartX/effectiveWidthPixels;
+    int screenStartPoint = correctedStartX%effectiveWidthPixels;
+    int numberToDoInFirst = effectiveWidthPixels-screenStartPoint;
+    int numberToDoInFinal = areaWidth-numberToDoInFirst;
+
+    if (startX+areaWidth>levelWidth) {
+
+      int offset = (startX+areaWidth)-levelWidth;
+      correctedStartX-=offset;
+      screenIndexNumber = correctedStartX/effectiveWidthPixels;
+      screenStartPoint = correctedStartX%effectiveWidthPixels;
+      numberToDoInFirst = effectiveWidthPixels-screenStartPoint;
+      numberToDoInFinal = areaWidth-numberToDoInFirst;
+    }
+
+    for ( int firstScreenIndex = screenStartPoint; firstScreenIndex < effectiveWidthPixels; firstScreenIndex++ ) {
+      if (currentArrayXIndex<areaWidth) {
+        for ( int heightIndex=0; heightIndex < effectiveHeightPixels; heightIndex++ ) {
+
+          returnArray[currentArrayXIndex][heightIndex] = tileArray[screenIndexNumber][firstScreenIndex][heightIndex];
+        }
+      }
+      currentArrayXIndex++;
+    }
+
+    for ( int lastScreenIndex = 0; lastScreenIndex < numberToDoInFinal; lastScreenIndex++ ) {
+
+      for ( int heightIndex=0; heightIndex < effectiveHeightPixels; heightIndex++ ) {
+
+        returnArray[currentArrayXIndex][heightIndex] = tileArray[screenIndexNumber+1][lastScreenIndex][heightIndex];
+      }
+      currentArrayXIndex++;
+    }
+
+    return returnArray;
+  }
+
+  /** 
+   * TEST FUNCTION (not called normally) - draws the areas for which the dinosaur checks for collision, used for visualization of physics checks
+   */
+  void drawTEST_AREA() {
+
+    if (levelPlayer.getX()<effectiveWidthPixels/2) {
+      translate(levelPlayer.getX()*pixelXScale, 0);
+    } else if (levelPlayer.getX()>levelWidth-effectiveWidthPixels/2) {
+      translate((effectiveWidthPixels+levelPlayer.getX()-levelWidth)*pixelXScale, 0);
+    } else {
+      translate((effectiveWidthPixels/2)*pixelXScale, 0);
+    }
+
+    // Currently loaded int from screen representing tile - used to draw correct tile color
+    int currentPlannedTile;
+    int tilesOnScreen[][] = dinoCollisionArrays[0];
+
+    for ( int widthIndex=0; widthIndex < tilesOnScreen.length; widthIndex++ ) {
+
+      for ( int heightIndex=0; heightIndex < tilesOnScreen[0].length; heightIndex++ ) {
+
+        currentPlannedTile = tilesOnScreen[widthIndex][heightIndex];
+        //print(currentPlannedTile);
+        if (currentPlannedTile>=0) {
+
+          drawPixel(widthIndex, heightIndex, 255, 0, 255);
+        }
+      }
+    }
+
+    translate(-levelPlayer.getDinoWidth()*pixelXScale, 0);
+    tilesOnScreen= dinoCollisionArrays[1];
+
+    for ( int widthIndex=0; widthIndex < tilesOnScreen.length; widthIndex++ ) {
+
+      for ( int heightIndex=0; heightIndex < tilesOnScreen[0].length; heightIndex++ ) {
+
+        currentPlannedTile = tilesOnScreen[widthIndex][heightIndex];
+
+        if (currentPlannedTile>=0) {
+
+          drawPixel(widthIndex, heightIndex, 0, 255, 0);
+        }
+      }
+    }
+
+    translate(2*levelPlayer.getDinoWidth()*pixelXScale, 0);
+
+    tilesOnScreen = dinoCollisionArrays[2];
+
+    for ( int widthIndex=0; widthIndex < tilesOnScreen.length; widthIndex++ ) {
+
+      for ( int heightIndex=0; heightIndex < tilesOnScreen[0].length; heightIndex++ ) {
+
+        currentPlannedTile = tilesOnScreen[widthIndex][heightIndex];
+
+        if (currentPlannedTile>=0) {
+
+          drawPixel(widthIndex, heightIndex, 255, 255, 0);
+        }
+      }
+    }
+    translate(-levelPlayer.getDinoWidth()*pixelXScale, 0);
+
+    if (levelPlayer.getX()<effectiveWidthPixels/2) {
+      translate(-levelPlayer.getX()*pixelXScale, 0);
+    } else if (levelPlayer.getX()>levelWidth-effectiveWidthPixels/2) {
+      translate((-(effectiveWidthPixels+levelPlayer.getX()-levelWidth)*pixelXScale), 0);
+    } else {
+      translate(-(effectiveWidthPixels/2)*pixelXScale, 0);
+    }
+  }
+
+  /** 
+   * Draws the level's tiles from the loaded array
+   */
+  void drawTiles() {
+
+    // Currently loaded int from screen representing tile - used to draw correct tile color
+    int currentPlannedTile;
+    int tilesOnScreen[][] = calculateLocalTiles((levelPlayer.getX()-int((effectiveWidthPixels)/2)), effectiveWidthPixels);
+
+    for ( int widthIndex=0; widthIndex < effectiveWidthPixels; widthIndex++ ) {
+
+      for ( int heightIndex=0; heightIndex < effectiveHeightPixels; heightIndex++ ) {
+
+        currentPlannedTile = tilesOnScreen[widthIndex][heightIndex];
+
+        if (currentPlannedTile>=0) {
+
+          drawPixel(widthIndex, heightIndex, tileRGB[currentPlannedTile][0], tileRGB[currentPlannedTile][1], tileRGB[currentPlannedTile][2]);
+        }
+      }
+    }
+  }
+
+  /** 
+   * Draws the level's background from the loaded array
+   */
+  void drawBackGround() {
+
+    // Currently loaded int from screen representing tile - used to draw correct tile color
+    int currentPlannedTile;
+
+    for ( int widthIndex=0; widthIndex < effectiveWidthPixels; widthIndex++ ) {
+
+      for ( int heightIndex=0; heightIndex < effectiveHeightPixels; heightIndex++ ) {
+
+
+        currentPlannedTile = backGroundArray[widthIndex][heightIndex];
+
+        if (currentPlannedTile>=0) {
+
+          drawPixel(widthIndex, heightIndex, tileRGB[currentPlannedTile][0], tileRGB[currentPlannedTile][1], tileRGB[currentPlannedTile][2]);
+        }
+      }
+    }
+  }
+
+  /** 
+   * Loads the level settings file
+   */
+  void readLevelSettings(String fname) {
+
+    String[] lines = loadStrings(fname);
+
+    for ( int count=0; count < lines.length; count++ ) {
+      Scanner scan = new Scanner(lines[count]);
+      if (scan.hasNextInt()) {
+
+        if (count==0) { 
+          numberOfScreens = scan.nextInt();
+        } else if (count==1) { 
+          numberOfScreenTypes = scan.nextInt();
+        } else if (count==2) { 
+          playerStartPixel = scan.nextInt();
+        } else if (count==3) { 
+          winningTiles = new int[scan.nextInt()];
+        } else if (count==4) { 
+
+          for ( int winningTileCount=0; winningTileCount < winningTiles.length; winningTileCount++ ) {
+            winningTiles[winningTileCount] = scan.nextInt();
+          }
+        } else if (count==5) { 
+
+          tileRGB = new int[scan.nextInt()][3];
+        } else if (count>5&&count<tileRGB.length+5) { 
+
+          for ( int RGBVal=0; RGBVal < 3; RGBVal++ ) {
+            tileRGB[count-6][RGBVal] = scan.nextInt();
+          }
+        }
+      } 
+
+      scan.close();
+    }
+  }
+
+
+
+  /** 
+   * Loads a given screen from a file given a string into a 2D array, returning said array
+   */
+  int[][] readScreenIntoArray(String fname) {
+
+    String[] lines = loadStrings(fname);
+    int screenArray[][] = new int[effectiveWidthPixels][effectiveHeightPixels];
+
+    for ( int heightIndex=0; heightIndex < effectiveHeightPixels; heightIndex++ ) {
+
+
+
+      Scanner scan = new Scanner(lines[heightIndex]);
+      scan.useDelimiter(",");
+
+      for ( int widthIndex=0; widthIndex < effectiveWidthPixels; widthIndex++ ) {
+
+        if (scan.hasNextInt()) {
+
+          screenArray[widthIndex][heightIndex] = scan.nextInt();
+        } else { 
+
+          println("File reading failed - missing tile on index height = "+heightIndex+" width = "+widthIndex);
+          scan.close();
+          return null;
+        }
+      }
+
+      scan.close();
+    }
+
+
+    return screenArray;
+  }
+
+  /** 
+   * Helper method to draw pixels using accurate scaling
+   */
+  void drawPixel(int xLoc, int yLoc, float red, float green, float blue) {
+
+    fill(red, green, blue);
+    rect(xLoc*pixelXScale, yLoc*pixelYScale, pixelXScale, pixelYScale);
+  }
+}
