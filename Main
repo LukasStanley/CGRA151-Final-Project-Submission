@@ -1,0 +1,234 @@
+//ALL CODE AND ART INCLUDED WRITTEN AND OWNED BY LUKAS ROLF STANLEY
+
+//Scaling variables - must be changed in sync due to limitations
+float pixelXScale;
+float pixelYScale;
+float screenDenominator = 1.25;
+int effectiveHeightPixels = 192;
+int effectiveWidthPixels = 360;
+int distanceBetweenButtons = 10;
+
+//Gameplay related variables
+level currentLevel;
+boolean isLevelActive = false;
+int numberOfLevels = 2;
+boolean victoryState[] = new boolean[numberOfLevels];
+button levelButtonArray[] = new button[numberOfLevels];
+
+//Tables that hold the CSV information of the sprites for when they need to be drawn
+int[][] menuBackGroundRGB = { {0, 162, 232}, {255, 242, 0}, {255, 201, 14}, {163, 163, 163}, {125, 125, 125} }; //RGB for the menus's colours (stored internally, could be put in a settings file)
+int menuBackGroundArray[][];       //locations of background image's pixels
+int buttonNotCompleteArray[][];   //locations of button image's pixels
+int buttonCompleteArray[][];     //locations of button image's pixels
+int buttonDimensions = 20;
+
+//Initializes and loads as needed for the main menu
+void setup() {
+
+  //sets up pixel scale
+  pixelYScale = (displayHeight/effectiveHeightPixels)/screenDenominator;
+  pixelXScale = (displayWidth/effectiveWidthPixels)/screenDenominator;
+
+  //Sets up temporary variables to make equation more visually clear
+  int buttonAreaOverallWidth = levelButtonArray.length*(distanceBetweenButtons-1)+levelButtonArray.length*buttonDimensions;
+  int buttonInitialOffset = effectiveWidthPixels/2-(buttonAreaOverallWidth/2);
+  for (int i = 0; i < victoryState.length; i++) {
+
+    victoryState[i]=false;
+    levelButtonArray[i]=new button(buttonInitialOffset+i*buttonDimensions+i*distanceBetweenButtons, effectiveHeightPixels/2, buttonDimensions, buttonDimensions, pixelXScale, pixelYScale);
+  }
+
+  //Load the CSV images into arrays
+  menuBackGroundArray = readCSVIntoArray("images/Backgrounds/mainMenuBackGround.csv", effectiveWidthPixels, effectiveHeightPixels); //locations of background image's pixels
+  buttonNotCompleteArray = readCSVIntoArray("images/widget/buttonUncomplete.csv", buttonDimensions, buttonDimensions);
+  buttonCompleteArray = readCSVIntoArray("images/widget/buttonComplete.csv", buttonDimensions, buttonDimensions);
+
+  //Ensure everything is drawn as wanted - noStroke is essential for the game's look, although a stroke can look visually interesting
+  noStroke();
+  size(1440, 768) ;
+  background(255);
+  //activateLevel(1);
+}
+
+/** 
+ * Does everything.
+ */
+void draw() {
+
+  if (isLevelActive == true) {    
+
+    if (currentLevel.updateHasWon()) {
+
+      isLevelActive=false;
+      victoryState[currentLevel.getCurrentLevel()-1]=true;
+    } else if (currentLevel.updateHasLost()) {
+
+      isLevelActive=false;
+    } else {
+
+      currentLevel.drawLevel();
+    }
+  }
+
+  if (isLevelActive == false) {
+
+    drawMenuItem(menuBackGroundArray, 0, 0);
+    drawButtons();
+  }
+}
+
+/** 
+ * Button event that loads the level selected
+ */
+public void activateLevel(int levelNumber) {
+
+  isLevelActive=true;
+  currentLevel = new level(levelNumber, effectiveHeightPixels, effectiveWidthPixels, screenDenominator);
+  currentLevel.loadLevel();
+}
+
+public void drawButtons() {
+
+  for (int i = 0; i < numberOfLevels; i++) {
+
+    if (victoryState[i]==true) {
+
+      drawMenuItem(buttonCompleteArray, levelButtonArray[i].getNonScaledX(), levelButtonArray[i].getNonScaledY());
+    } else {
+
+      drawMenuItem(buttonNotCompleteArray, levelButtonArray[i].getNonScaledX(), levelButtonArray[i].getNonScaledY());
+    }
+  }
+}
+
+/** 
+ * Draws a loaded image in the correct pixel format
+ */
+void drawMenuItem(int[][] imageToDraw, int xPos, int yPos) {
+
+  // Currently loaded int from screen representing tile - used to draw correct tile color
+  int currentPlannedTile;
+
+  for ( int widthIndex=0; widthIndex < imageToDraw.length; widthIndex++ ) {
+
+    for ( int heightIndex=0; heightIndex < imageToDraw[0].length; heightIndex++ ) {
+
+
+      currentPlannedTile = imageToDraw[widthIndex][heightIndex];
+
+      if (currentPlannedTile>=0) {
+
+        drawPixel(xPos+widthIndex, yPos+heightIndex, menuBackGroundRGB[currentPlannedTile][0], menuBackGroundRGB[currentPlannedTile][1], menuBackGroundRGB[currentPlannedTile][2]);
+      }
+    }
+  }
+}
+
+/** 
+ * Loads an image (stored as CSV) for UI into 2D array, returning said array
+ */
+int[][] readCSVIntoArray(String fname, int imageWidth, int imageHeight) {
+
+  String[] lines = loadStrings(fname);
+  int screenArray[][] = new int[imageWidth][imageHeight];
+
+  for ( int heightIndex=0; heightIndex < imageHeight; heightIndex++ ) {
+
+
+
+    Scanner scan = new Scanner(lines[heightIndex]);
+    scan.useDelimiter(",");
+
+    for ( int widthIndex=0; widthIndex < imageWidth; widthIndex++ ) {
+
+      if (scan.hasNextInt()) {
+
+        screenArray[widthIndex][heightIndex] = scan.nextInt();
+      } else { 
+
+        println("File reading failed - missing tile on index height = "+heightIndex+" width = "+widthIndex);
+        scan.close();
+        return null;
+      }
+    }
+
+    scan.close();
+  }
+
+
+  return screenArray;
+}
+
+/** 
+ * Helper method to draw pixels using accurate scaling
+ */
+void drawPixel(int xLoc, int yLoc, float red, float green, float blue) {
+
+  fill(red, green, blue);
+  rect(xLoc*pixelXScale, yLoc*pixelYScale, pixelXScale, pixelYScale);
+}
+
+/** 
+ * Mouse click events handling - checks if any buttons were pressed for level loading
+ */
+
+public void mouseClicked() {
+
+  if (isLevelActive==false) {
+
+    for (int i = 0; i < levelButtonArray.length; i++) {
+
+      if (levelButtonArray[i].wasPressed(mouseX, mouseY)) {
+
+        activateLevel(i+1);
+        return;
+      }
+    }
+  }
+  return;
+}
+
+/** 
+ * KEY PRESS HANDLING BELOW - PASSES ALL INPUTS TO CURRENT LEVEL
+ */
+
+public void keyPressed()
+{
+  if (isLevelActive==true) {
+    if (key == 'w'||key == ' '||key == 'W')
+    {
+      currentLevel.keyBeenPressed("jump", true);
+    }
+    if (key == 'a'||key == 'A')
+    {
+      currentLevel.keyBeenPressed("left", true);
+    } else if (key == 'd'||key == 'D')
+    {
+      currentLevel.keyBeenPressed("right", true);
+    }
+    //else if (key == 's')
+    //{
+    //Unused ducking input
+    //}
+  }
+}
+public void keyReleased()
+{
+  if (isLevelActive==true) {
+    if (key == 'w'||key == ' '||key == 'W')
+    {
+      currentLevel.keyBeenPressed("jump", false);
+    }
+    if (key == 'a'||key == 'A')
+    {
+      currentLevel.keyBeenPressed("left", false);
+    } else if (key == 'd'||key == 'D')
+    {
+      currentLevel.keyBeenPressed("right", false);
+    }
+    //else if (key == 's')
+    //{
+    //Unused ducking input 
+    //}
+  }
+}
